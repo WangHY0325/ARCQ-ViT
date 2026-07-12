@@ -1,0 +1,7 @@
+torch>=2.1
+torchvision>=0.16
+timm==0.9.16
+pyyaml>=6.0
+numpy>=1.24
+pillow>=9.0
+triton>=2.1

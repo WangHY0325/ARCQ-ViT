@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+data/
+pretrained/
+runs/
+logs/
+figures/
+*.pt
+*.pth
+*.ckpt
