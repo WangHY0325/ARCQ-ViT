@@ -25,10 +25,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fair_qat.aoq_lsq_backend import AOQLSQBackend
-from fair_qat.n2uq_backend import N2UQBackend
-from fair_qat.packqvit_backend import PackQViTBackend
-from fair_qat.nulsq_backend import NuLSQBackend
 
 # ======================================================================
 #  Q-ViT Backend
@@ -676,20 +672,9 @@ class AOQBackend:
 
 BACKENDS = {
     "fp32": FP32Backend,
-    "qvit": QViTBackend,
-    "qvit_nodistill": QViTBackend,
-    "lsq": LSQBackend,
     "dcddfz": DDFZBackend,
-    "fimaq": FIMAQBackend,
-    "gplq": GPLQBackend,
     "pcddfz_nodc": PCDDFZNoDCBackend,
     "pcddfz_dc": PCDDFZDCBackend,
-    "aoq": AOQBackend,
-    "aoq_lsq": AOQLSQBackend,
-    "n2uq": N2UQBackend,
-    "packqvit": PackQViTBackend,
-    "nulsq_wa": NuLSQBackend,
-    "nulsq": NuLSQBackend,
 }
 
 
