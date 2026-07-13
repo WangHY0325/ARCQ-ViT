@@ -2,7 +2,9 @@
 
 Official implementation of **ARCQ: Adaptive Residual Codebook Quantization for Vision Transformers**.
 
-ARCQ quantizes normalized group residuals instead of raw tensor values and adapts non-uniform codebooks at scheduled training stages.`r`n`r`nThis repository contains the ARCQ implementation only; reference methods and baseline implementations are not included.
+ARCQ quantizes normalized group residuals instead of raw tensor values and adapts non-uniform codebooks at scheduled training stages.
+
+This repository contains the ARCQ implementation only; reference methods and baseline implementations are not included.
 
 ## Features
 
