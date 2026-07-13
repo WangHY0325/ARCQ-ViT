@@ -272,7 +272,7 @@ class TraceCollector:
         self._base_row = {
             "dataset": config.get("dataset", "cifar100"),
             "backbone": config.get("model_key", "deit_small"),
-            "method": config.get("method", "pcddfz_nodc"),
+            "method": config.get("method", "pcarcq_nodc"),
             "bit": config.get("w_bits", config.get("bits", 3)),
         }
 

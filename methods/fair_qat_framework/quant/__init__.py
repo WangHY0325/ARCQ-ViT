@@ -1,1 +1,1 @@
-from .dcddfz import DDFZQuantizer, DDFZActQuantizer, DDFZWeightQuantizer
+from .dcarcq import ARCQQuantizer, ARCQActQuantizer, ARCQWeightQuantizer

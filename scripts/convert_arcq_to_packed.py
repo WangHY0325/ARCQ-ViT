@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Convert a trained DDFZ checkpoint into a packed checkpoint.
+Convert a trained ARCQ checkpoint into a packed checkpoint.
 The packed checkpoint contains ONLY packed weight codes + metadata,
 not the original FP32 weights. Expected file size: ~18 MB for DeiT-Small W4A4.
 """
@@ -19,9 +19,9 @@ FAIR_ROOT = ROOT / "methods" / "fair_qat_framework"
 if str(FAIR_ROOT) not in sys.path:
     sys.path.insert(0, str(FAIR_ROOT))
 
-import fair_qat.ddfz_packed_linear as dpl
-from fair_qat.ddfz_packed_convert import convert_ddfz_linear_to_packed, count_packed_linear
-from fair_qat.ddfz_packed_py import pack_codes_py, unpack_codes_py
+import fair_qat.arcq_packed_linear as dpl
+from fair_qat.arcq_packed_convert import convert_arcq_linear_to_packed, count_packed_linear
+from fair_qat.arcq_packed_py import pack_codes_py, unpack_codes_py
 from fair_qat.quant_backends import get_backend
 from fair_qat.timm_quant_models import build_timm_quant_model, _load_checkpoint_if_needed
 
@@ -32,18 +32,18 @@ def convert(args):
     # Load config
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
-    os.environ["DDFZ_ZERO_ANCHOR"] = "true"
-    os.environ["DDFZ_CODEBOOK_MODE"] = "ddfz"
+    os.environ["ARCQ_ZERO_ANCHOR"] = "true"
+    os.environ["ARCQ_CODEBOOK_MODE"] = "arcq"
     
-    # Build DDFZ model on CPU
-    print(f"[BUILD] Creating DDFZ model on CPU...")
-    model = build_timm_quant_model(config, get_backend("pcddfz_nodc"))
+    # Build ARCQ model on CPU
+    print(f"[BUILD] Creating ARCQ model on CPU...")
+    model = build_timm_quant_model(config, get_backend("pcarcq_nodc"))
     
     # Load checkpoint
     print(f"[LOAD] Loading checkpoint: {args.checkpoint}")
-    from benchmark_ddfz_packed_inference import load_checkpoint, mark_ddfz_codebooks_ready
+    from benchmark_arcq_packed_inference import load_checkpoint, mark_arcq_codebooks_ready
     missing, unexpected, skipped, restored = load_checkpoint(model, Path(args.checkpoint))
-    ready, _ = mark_ddfz_codebooks_ready(model)
+    ready, _ = mark_arcq_codebooks_ready(model)
     print(f"  missing={missing} unexpected={unexpected} skipped_shape={skipped} restored={restored}")
     print(f"  ready_codebooks={ready}")
     
@@ -63,7 +63,7 @@ def convert(args):
         formats = {}
         for fmt in ["packed", "dequant_gemm"]:
             print(f"\n[CONVERT] Format: {fmt}")
-            model_copy = convert_ddfz_linear_to_packed(model, runtime_code_format=fmt)
+            model_copy = convert_arcq_linear_to_packed(model, runtime_code_format=fmt)
             packed_count = count_packed_linear(model_copy)
             
             params = sum(p.numel() * p.element_size() for p in model_copy.parameters()) / 1024 / 1024
@@ -101,9 +101,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="deit_small")
     parser.add_argument("--bits", type=int, default=4)
-    parser.add_argument("--config", default=str(ROOT / "configs" / "cifar100_deit" / "qat" / "deit_small_pcddfz_nodc_w4a4_w_distill.yaml"))
-    parser.add_argument("--checkpoint", default=str(ROOT / "runs" / "cifar100_qat" / "pcddfz_nodc" / "deit_small" / "w4a4_w_distill" / "best.pt"))
-    parser.add_argument("--output-dir", default=str(ROOT / "runs" / "cifar100_qat" / "ddfz_packed"))
+    parser.add_argument("--config", default=str(ROOT / "configs" / "cifar100_deit" / "qat" / "deit_small_pcarcq_nodc_w4a4_w_distill.yaml"))
+    parser.add_argument("--checkpoint", default=str(ROOT / "runs" / "cifar100_qat" / "pcarcq_nodc" / "deit_small" / "w4a4_w_distill" / "best.pt"))
+    parser.add_argument("--output-dir", default=str(ROOT / "runs" / "cifar100_qat" / "arcq_packed"))
     args = parser.parse_args()
     
     convert(args)

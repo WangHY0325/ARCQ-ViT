@@ -1,7 +1,7 @@
 """
 Quantized Linear wrapper modules for ViT.
 
-Provides QuantLinearLSQ and QuantLinearDDFZ that replace nn.Linear
+Provides QuantLinearLSQ and QuantLinearARCQ that replace nn.Linear
 in DeiT-Tiny's attention and MLP blocks. The classification head
 is excluded from quantization.
 """
@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .lsq import LSQQuantizer
-from .dcddfz import DDFZActQuantizer, DDFZWeightQuantizer
+from .dcarcq import ARCQActQuantizer, ARCQWeightQuantizer
 
 
 # ============================================================================
@@ -68,11 +68,11 @@ class QuantLinearLSQ(nn.Module):
 
 
 # ============================================================================
-#  QuantLinearDDFZ
+#  QuantLinearARCQ
 # ============================================================================
 
-class QuantLinearDDFZ(nn.Module):
-    """Linear layer with DDFZ activation and weight quantization."""
+class QuantLinearARCQ(nn.Module):
+    """Linear layer with ARCQ activation and weight quantization."""
 
     def __init__(
         self,
@@ -93,11 +93,11 @@ class QuantLinearDDFZ(nn.Module):
         else:
             self.register_parameter("bias", None)
 
-        self.act_quant = DDFZActQuantizer(
+        self.act_quant = ARCQActQuantizer(
             bits=a_bits,
             group_size=group_size,
         )
-        self.weight_quant = DDFZWeightQuantizer(
+        self.weight_quant = ARCQWeightQuantizer(
             bits=w_bits,
             group_size=group_size,
         )
@@ -112,7 +112,7 @@ class QuantLinearDDFZ(nn.Module):
             nn.init.uniform_(self.bias, -bound, bound)
 
     def forward(self, x):
-        # DDFZ needs to group along the last dim of activation and in_features of weight
+        # ARCQ needs to group along the last dim of activation and in_features of weight
         x_q = self.act_quant(x)
         w_q = self.weight_quant(self.weight)
         return F.linear(x_q, w_q, self.bias)
@@ -163,8 +163,8 @@ def apply_lsq_quant(model: nn.Module, config: dict) -> nn.Module:
     return model
 
 
-def apply_dcddfz_quant(model: nn.Module, config: dict) -> nn.Module:
-    """Apply DC-DDFZ quantization to all Linear layers in a ViT model.
+def apply_dcarcq_quant(model: nn.Module, config: dict) -> nn.Module:
+    """Apply DC-ARCQ quantization to all Linear layers in a ViT model.
 
     Args:
         model: DeiT-Tiny model.
@@ -176,5 +176,5 @@ def apply_dcddfz_quant(model: nn.Module, config: dict) -> nn.Module:
     w_bits = config.get("w_bits", 4)
     a_bits = config.get("a_bits", 4)
     group_size = config.get("group_size", 64)
-    _replace_linear_recursive(model, QuantLinearDDFZ, w_bits=w_bits, a_bits=a_bits, group_size=group_size)
+    _replace_linear_recursive(model, QuantLinearARCQ, w_bits=w_bits, a_bits=a_bits, group_size=group_size)
     return model

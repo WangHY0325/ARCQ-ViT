@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Phase 3: Benchmark on-the-fly packed DDFZ inference.
+Phase 3: Benchmark on-the-fly packed ARCQ inference.
 Measures: storage (.pt file size), GPU resident memory, inference latency.
-Compares: fp32, pseudo_ddfz, packed_on_the_fly_ddfz.
+Compares: fp32, pseudo_arcq, packed_on_the_fly_arcq.
 """
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ FAIR_ROOT = ROOT / "methods" / "fair_qat_framework"
 if str(FAIR_ROOT) not in sys.path:
     sys.path.insert(0, str(FAIR_ROOT))
 
-import fair_qat.ddfz_packed_linear as dpl
-from fair_qat.ddfz_packed_convert import convert_ddfz_linear_to_packed
-from fair_qat.ddfz_packed_on_the_fly import _unpack_weight_gpu, _dequant_activation_torch
-from fair_qat.ddfz_packed_py import pack_codes_py
+import fair_qat.arcq_packed_linear as dpl
+from fair_qat.arcq_packed_convert import convert_arcq_linear_to_packed
+from fair_qat.arcq_packed_on_the_fly import _unpack_weight_gpu, _dequant_activation_torch
+from fair_qat.arcq_packed_py import pack_codes_py
 from fair_qat.quant_backends import get_backend
 from fair_qat.timm_quant_models import build_timm_quant_model
 
@@ -61,7 +61,7 @@ def _model_input_dtype(model):
 
 
 def _restore_otf_metadata_fp32(model):
-    from fair_qat.ddfz_packed_on_the_fly import DDFZPackedLinearOnTheFly
+    from fair_qat.arcq_packed_on_the_fly import ARCQPackedLinearOnTheFly
 
     fp32_buffer_names = (
         "weight_codebook",
@@ -72,7 +72,7 @@ def _restore_otf_metadata_fp32(model):
         "activation_thresholds",
     )
     for module in model.modules():
-        if isinstance(module, DDFZPackedLinearOnTheFly):
+        if isinstance(module, ARCQPackedLinearOnTheFly):
             for name in fp32_buffer_names:
                 value = module._buffers.get(name)
                 if value is not None and value.is_floating_point():
@@ -86,10 +86,10 @@ def _prepare_half_chain(model):
 
 
 def build_packed_on_the_fly(device, model_key, bits, half_chain=True):
-    """Build a model with DDFZPackedLinearOnTheFly layers. All CPU work, GPU only at the end."""
+    """Build a model with ARCQPackedLinearOnTheFly layers. All CPU work, GPU only at the end."""
     bit_name = f"w{bits}a{bits}"
-    config_path = ROOT / "configs" / "cifar100_deit" / "qat" / f"{model_key}_pcddfz_nodc_{bit_name}_w_distill.yaml"
-    ckpt_path = ROOT / "runs" / "cifar100_qat" / "pcddfz_nodc" / model_key / f"{bit_name}_w_distill" / "best.pt"
+    config_path = ROOT / "configs" / "cifar100_deit" / "qat" / f"{model_key}_pcarcq_nodc_{bit_name}_w_distill.yaml"
+    ckpt_path = ROOT / "runs" / "cifar100_qat" / "pcarcq_nodc" / model_key / f"{bit_name}_w_distill" / "best.pt"
 
     if not config_path.exists():
         raise FileNotFoundError(f"Missing config: {config_path}")
@@ -98,10 +98,10 @@ def build_packed_on_the_fly(device, model_key, bits, half_chain=True):
 
     with open(config_path) as f:
         config = yaml.safe_load(f)
-    os.environ["DDFZ_ZERO_ANCHOR"] = "true"
-    os.environ["DDFZ_CODEBOOK_MODE"] = "ddfz"
+    os.environ["ARCQ_ZERO_ANCHOR"] = "true"
+    os.environ["ARCQ_CODEBOOK_MODE"] = "arcq"
 
-    model = build_timm_quant_model(config, get_backend("pcddfz_nodc"))  # CPU
+    model = build_timm_quant_model(config, get_backend("pcarcq_nodc"))  # CPU
 
     # Load checkpoint
     sd = torch.load(str(ckpt_path), map_location="cpu")
@@ -141,17 +141,17 @@ def build_packed_on_the_fly(device, model_key, bits, half_chain=True):
     dpl.pack_codes = pack_codes_py
     try:
         # First convert to packed to get packed codes
-        packed_model = convert_ddfz_linear_to_packed(model, runtime_code_format="packed")
+        packed_model = convert_arcq_linear_to_packed(model, runtime_code_format="packed")
     finally:
         dpl.pack_codes = orig_pack
 
     # Now rebuild with OnTheFly linears using packed data
-    from fair_qat.ddfz_packed_on_the_fly import DDFZPackedLinearOnTheFly
+    from fair_qat.arcq_packed_on_the_fly import ARCQPackedLinearOnTheFly
 
     def _replace_with_on_the_fly(module):
         for name, child in list(module.named_children()):
-            if isinstance(child, dpl.DDFZPackedLinear):
-                new = DDFZPackedLinearOnTheFly(
+            if isinstance(child, dpl.ARCQPackedLinear):
+                new = ARCQPackedLinearOnTheFly(
                     in_features=child.in_features,
                     out_features=child.out_features,
                     bias=child.bias.numel() > 0,
@@ -171,7 +171,7 @@ def build_packed_on_the_fly(device, model_key, bits, half_chain=True):
                 _replace_with_on_the_fly(child)
 
     _replace_with_on_the_fly(packed_model)
-    del model  # drop original DDFZ model reference
+    del model  # drop original ARCQ model reference
     gc.collect()
     torch.cuda.empty_cache()
     packed_model.to(device)
@@ -183,7 +183,7 @@ def build_packed_on_the_fly(device, model_key, bits, half_chain=True):
     max_w = 0
     otf_layers = []
     for m in packed_model.modules():
-        if isinstance(m, DDFZPackedLinearOnTheFly):
+        if isinstance(m, ARCQPackedLinearOnTheFly):
             max_w = max(max_w, m.out_features * m.in_features)
             otf_layers.append(m)
     shared_buf = torch.zeros(max_w, dtype=torch.float16, device=device)
@@ -352,7 +352,7 @@ def main():
         print(f"  OTF val_top1={val_acc:.2f}%")
 
     # Save results
-    out_dir = ROOT / "figures" / "ddfz_packed_inference"
+    out_dir = ROOT / "figures" / "arcq_packed_inference"
     out_dir.mkdir(parents=True, exist_ok=True)
     tag = f"{model_key}_{bit_name}"
     path = out_dir / f"bench_phase3_{tag}.csv"

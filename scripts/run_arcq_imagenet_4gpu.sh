@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="/root/autodl-tmp/Quest/AAAI"
 CODE="${ROOT}/methods/fair_qat_framework"
-CONFIG_LIST="${ROOT}/configs/imagenet_ddfz_4gpu/config_list_ddfz_imagenet_4gpu.txt"
-LOG_DIR="${ROOT}/logs/imagenet_ddfz_4gpu"
+CONFIG_LIST="${ROOT}/configs/imagenet_arcq_4gpu/config_list_arcq_imagenet_4gpu.txt"
+LOG_DIR="${ROOT}/logs/imagenet_arcq_4gpu"
 
 GPU_COUNT="${GPU_COUNT:-4}"
 CONFIG_INDEX="${CONFIG_INDEX:-0}"
@@ -29,10 +29,10 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export PATH="/root/miniconda3/bin:${PATH}"
 
-echo "[DDFZ_4GPU] host=$(hostname)"
-echo "[DDFZ_4GPU] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
-echo "[DDFZ_4GPU] nproc_per_node=${GPU_COUNT}"
-echo "[DDFZ_4GPU] config=${CONFIG}"
+echo "[ARCQ_4GPU] host=$(hostname)"
+echo "[ARCQ_4GPU] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
+echo "[ARCQ_4GPU] nproc_per_node=${GPU_COUNT}"
+echo "[ARCQ_4GPU] config=${CONFIG}"
 
 exec torchrun \
   --standalone \

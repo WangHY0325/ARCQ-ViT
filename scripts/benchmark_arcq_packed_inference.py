@@ -22,8 +22,8 @@ if not FAIR_ROOT.exists():
 if str(FAIR_ROOT) not in sys.path:
     sys.path.insert(0, str(FAIR_ROOT))
 
-from fair_qat.ddfz_packed_convert import convert_ddfz_linear_to_packed, count_packed_linear
-from fair_qat.ddfz_packed_linear import DDFZPackedLinear
+from fair_qat.arcq_packed_convert import convert_arcq_linear_to_packed, count_packed_linear
+from fair_qat.arcq_packed_linear import ARCQPackedLinear
 from fair_qat.quant_backends import get_backend
 from fair_qat.timm_quant_models import build_timm_quant_model
 
@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--num-classes", type=int, default=100)
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--out-dir", default=str(ROOT / "figures" / "ddfz_packed_inference"))
+    parser.add_argument("--out-dir", default=str(ROOT / "figures" / "arcq_packed_inference"))
     return parser.parse_args()
 
 
@@ -113,7 +113,7 @@ def load_checkpoint(model: nn.Module, path: Path):
     return len(missing), len(unexpected), skipped_shape, restored_dynamic
 
 
-def mark_ddfz_codebooks_ready(model: nn.Module):
+def mark_arcq_codebooks_ready(model: nn.Module):
     ready = 0
     missing = 0
     for module in model.modules():
@@ -141,8 +141,8 @@ def mark_ddfz_codebooks_ready(model: nn.Module):
 
 
 def default_paths(model_key: str, bits: int):
-    config = ROOT / "configs" / "cifar100_deit" / "qat" / f"{model_key}_pcddfz_nodc_w{bits}a{bits}_w_distill.yaml"
-    checkpoint = ROOT / "runs" / "cifar100_qat" / "pcddfz_nodc" / model_key / f"w{bits}a{bits}_w_distill" / "best.pt"
+    config = ROOT / "configs" / "cifar100_deit" / "qat" / f"{model_key}_pcarcq_nodc_w{bits}a{bits}_w_distill.yaml"
+    checkpoint = ROOT / "runs" / "cifar100_qat" / "pcarcq_nodc" / model_key / f"w{bits}a{bits}_w_distill" / "best.pt"
     return config, checkpoint
 
 
@@ -153,16 +153,16 @@ def build_fp32_model(model_key: str, num_classes: int, device: torch.device):
     return model.to(device).eval(), checkpoint
 
 
-def build_ddfz_model(config_path: Path, checkpoint_path: Path, device: torch.device):
+def build_arcq_model(config_path: Path, checkpoint_path: Path, device: torch.device):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    os.environ["DDFZ_ZERO_ANCHOR"] = "true"
-    os.environ["DDFZ_CODEBOOK_MODE"] = "ddfz"
-    model = build_timm_quant_model(config, get_backend("pcddfz_nodc"))
+    os.environ["ARCQ_ZERO_ANCHOR"] = "true"
+    os.environ["ARCQ_CODEBOOK_MODE"] = "arcq"
+    model = build_timm_quant_model(config, get_backend("pcarcq_nodc"))
     missing, unexpected, skipped_shape, restored_dynamic = load_checkpoint(model, checkpoint_path)
-    ready_cpu, missing_cpu = mark_ddfz_codebooks_ready(model)
+    ready_cpu, missing_cpu = mark_arcq_codebooks_ready(model)
     model.to(device).eval()
-    ready_gpu, missing_gpu = mark_ddfz_codebooks_ready(model)
+    ready_gpu, missing_gpu = mark_arcq_codebooks_ready(model)
     info = {
         "state_missing_keys": missing,
         "state_unexpected_keys": unexpected,
@@ -177,11 +177,11 @@ def build_ddfz_model(config_path: Path, checkpoint_path: Path, device: torch.dev
 
 
 def build_packed_model(config_path: Path, checkpoint_path: Path, device: torch.device, runtime_code_format: str):
-    import fair_qat.ddfz_packed_linear as dpl
-    from fair_qat.ddfz_packed_py import pack_codes_py, unpack_codes_py
+    import fair_qat.arcq_packed_linear as dpl
+    from fair_qat.arcq_packed_py import pack_codes_py, unpack_codes_py
 
-    # Build DDFZ model on CPU to avoid CUDA memory contamination
-    source, info = build_ddfz_model(config_path, checkpoint_path, torch.device("cpu"))
+    # Build ARCQ model on CPU to avoid CUDA memory contamination
+    source, info = build_arcq_model(config_path, checkpoint_path, torch.device("cpu"))
 
     # Patch CUDA functions with pure Python versions for CPU build
     _original_pack = dpl.pack_codes
@@ -189,7 +189,7 @@ def build_packed_model(config_path: Path, checkpoint_path: Path, device: torch.d
     dpl.pack_codes = pack_codes_py
     dpl.unpack_codes_u8 = unpack_codes_py
     try:
-        model = convert_ddfz_linear_to_packed(source, runtime_code_format=runtime_code_format).eval()
+        model = convert_arcq_linear_to_packed(source, runtime_code_format=runtime_code_format).eval()
     finally:
         dpl.pack_codes = _original_pack
         dpl.unpack_codes_u8 = _original_unpack_u8
@@ -282,7 +282,7 @@ def packed_storage_bytes(model: nn.Module):
     runtime = 0
     layers = 0
     for module in model.modules():
-        if isinstance(module, DDFZPackedLinear):
+        if isinstance(module, ARCQPackedLinear):
             total += module.estimated_storage_bytes()
             runtime += module.runtime_cache_bytes()
             layers += 1
@@ -311,14 +311,14 @@ def correctness_rows(models, args, device):
             "top1_agreement": float((top_left == top_right).float().mean().item()),
         })
 
-    if "pseudo_ddfz" in logits and "packed_ddfz" in logits:
-        add("pseudo_ddfz", "packed_ddfz", "pseudo_ddfz_vs_packed_ddfz")
-    if "pseudo_ddfz" in logits and "u8_ddfz" in logits:
-        add("pseudo_ddfz", "u8_ddfz", "pseudo_ddfz_vs_u8_ddfz")
-    if "pseudo_ddfz" in logits and "dequant_gemm_ddfz" in logits:
-        add("pseudo_ddfz", "dequant_gemm_ddfz", "pseudo_ddfz_vs_dequant_gemm_ddfz")
-    if "fp32" in logits and "pseudo_ddfz" in logits:
-        add("fp32", "pseudo_ddfz", "fp32_vs_pseudo_ddfz")
+    if "pseudo_arcq" in logits and "packed_arcq" in logits:
+        add("pseudo_arcq", "packed_arcq", "pseudo_arcq_vs_packed_arcq")
+    if "pseudo_arcq" in logits and "u8_arcq" in logits:
+        add("pseudo_arcq", "u8_arcq", "pseudo_arcq_vs_u8_arcq")
+    if "pseudo_arcq" in logits and "dequant_gemm_arcq" in logits:
+        add("pseudo_arcq", "dequant_gemm_arcq", "pseudo_arcq_vs_dequant_gemm_arcq")
+    if "fp32" in logits and "pseudo_arcq" in logits:
+        add("fp32", "pseudo_arcq", "fp32_vs_pseudo_arcq")
     return rows
 
 
@@ -335,7 +335,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
-        raise RuntimeError("DDFZ packed inference benchmark must run on a Slurm GPU node")
+        raise RuntimeError("ARCQ packed inference benchmark must run on a Slurm GPU node")
     if hasattr(torch, "set_float32_matmul_precision"):
         torch.set_float32_matmul_precision("highest")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -350,22 +350,22 @@ def main():
     print(f"[CORRECTNESS] building models model={args.model} bits={args.bits}", flush=True)
     try:
         fp32_model, fp32_checkpoint = build_fp32_model(args.model, args.num_classes, device)
-        pseudo_model, pseudo_info = build_ddfz_model(config_path, checkpoint_path, device)
+        pseudo_model, pseudo_info = build_arcq_model(config_path, checkpoint_path, device)
         packed_model, packed_info = build_packed_model(config_path, checkpoint_path, device, "packed")
         u8_model, u8_info = build_packed_model(config_path, checkpoint_path, device, "u8")
         dequant_gemm_model, dequant_gemm_info = build_packed_model(config_path, checkpoint_path, device, "dequant_gemm")
         correctness = correctness_rows(
             {
                 "fp32": fp32_model,
-                "pseudo_ddfz": pseudo_model,
-                "packed_ddfz": packed_model,
-                "u8_ddfz": u8_model,
-                "dequant_gemm_ddfz": dequant_gemm_model,
+                "pseudo_arcq": pseudo_model,
+                "packed_arcq": packed_model,
+                "u8_arcq": u8_model,
+                "dequant_gemm_arcq": dequant_gemm_model,
             },
             args,
             device,
         )
-        write_csv(out_dir / "ddfz_packed_correctness.csv", correctness)
+        write_csv(out_dir / "arcq_packed_correctness.csv", correctness)
         cleanup_model(fp32_model)
         cleanup_model(pseudo_model)
         cleanup_model(packed_model)
@@ -382,11 +382,11 @@ def main():
 
     methods = [
         ("fp32", 32, lambda: build_fp32_model(args.model, args.num_classes, device), fp32_checkpoint),
-        ("pseudo_ddfz", args.bits, lambda: build_ddfz_model(config_path, checkpoint_path, device), checkpoint_path),
-        ("packed_ddfz", args.bits, lambda: build_packed_model(config_path, checkpoint_path, device, "packed"), checkpoint_path),
-        ("u8_ddfz", args.bits, lambda: build_packed_model(config_path, checkpoint_path, device, "u8"), checkpoint_path),
+        ("pseudo_arcq", args.bits, lambda: build_arcq_model(config_path, checkpoint_path, device), checkpoint_path),
+        ("packed_arcq", args.bits, lambda: build_packed_model(config_path, checkpoint_path, device, "packed"), checkpoint_path),
+        ("u8_arcq", args.bits, lambda: build_packed_model(config_path, checkpoint_path, device, "u8"), checkpoint_path),
         (
-            "dequant_gemm_ddfz",
+            "dequant_gemm_arcq",
             args.bits,
             lambda: build_packed_model(config_path, checkpoint_path, device, "dequant_gemm"),
             checkpoint_path,
@@ -440,7 +440,7 @@ def main():
             })
             if method == "fp32":
                 fp32_latency_by_batch[batch_size] = row["avg_batch_latency_ms"]
-            if method == "pseudo_ddfz":
+            if method == "pseudo_arcq":
                 pseudo_latency_by_batch[batch_size] = row["avg_batch_latency_ms"]
             bottleneck_rows.append({
                 "model": args.model,
@@ -449,25 +449,25 @@ def main():
                 "batch_size": batch_size,
                 "avg_batch_latency_ms": row["avg_batch_latency_ms"],
                 "relative_to_fp32": row["avg_batch_latency_ms"] / fp32_latency_by_batch.get(batch_size, row["avg_batch_latency_ms"]),
-                "relative_to_pseudo_ddfz": row["avg_batch_latency_ms"] / pseudo_latency_by_batch.get(batch_size, row["avg_batch_latency_ms"]),
+                "relative_to_pseudo_arcq": row["avg_batch_latency_ms"] / pseudo_latency_by_batch.get(batch_size, row["avg_batch_latency_ms"]),
                 "forward_peak_delta_mb": row["forward_peak_delta_mb"],
                 "bottleneck_note": {
                     "fp32": "baseline_float_model",
-                    "pseudo_ddfz": "fake_quant_dequant_plus_float_linear",
-                    "packed_ddfz": "bit_extract_inner_loop_in_linear_kernel",
-                    "u8_ddfz": "direct_uint8_codes_plus_warp_parallel_linear_kernel",
-                    "dequant_gemm_ddfz": "packed_storage_runtime_fp16_gemm",
+                    "pseudo_arcq": "fake_quant_dequant_plus_float_linear",
+                    "packed_arcq": "bit_extract_inner_loop_in_linear_kernel",
+                    "u8_arcq": "direct_uint8_codes_plus_warp_parallel_linear_kernel",
+                    "dequant_gemm_arcq": "packed_storage_runtime_fp16_gemm",
                 }.get(method, ""),
             })
-            write_csv(out_dir / "ddfz_packed_latency_partial.csv", latency_rows)
-            write_csv(out_dir / "ddfz_packed_memory_partial.csv", memory_rows)
+            write_csv(out_dir / "arcq_packed_latency_partial.csv", latency_rows)
+            write_csv(out_dir / "arcq_packed_memory_partial.csv", memory_rows)
 
         cleanup_model(model)
 
-    write_csv(out_dir / "ddfz_packed_latency.csv", latency_rows)
-    write_csv(out_dir / "ddfz_packed_memory.csv", memory_rows)
-    write_csv(out_dir / "ddfz_packed_storage.csv", storage_rows)
-    write_csv(out_dir / "ddfz_packed_bottleneck.csv", bottleneck_rows)
+    write_csv(out_dir / "arcq_packed_latency.csv", latency_rows)
+    write_csv(out_dir / "arcq_packed_memory.csv", memory_rows)
+    write_csv(out_dir / "arcq_packed_storage.csv", storage_rows)
+    write_csv(out_dir / "arcq_packed_bottleneck.csv", bottleneck_rows)
     print(f"[DONE] out_dir={out_dir}", flush=True)
     print(
         f"[DONE] correctness={len(correctness)} latency={len(latency_rows)} "

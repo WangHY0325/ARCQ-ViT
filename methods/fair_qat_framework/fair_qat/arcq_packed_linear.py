@@ -7,9 +7,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fair_qat.ddfz_infer_cuda import (
-    ddfz_linear_forward,
-    ddfz_linear_forward_u8,
+from fair_qat.arcq_infer_cuda import (
+    arcq_linear_forward,
+    arcq_linear_forward_u8,
     pack_codes,
     quantize_activation,
     quantize_activation_dequant,
@@ -20,7 +20,7 @@ from fair_qat.ddfz_infer_cuda import (
 
 def _require_vector(name: str, value: torch.Tensor) -> torch.Tensor:
     if not isinstance(value, torch.Tensor) or value.numel() == 0:
-        raise ValueError(f"{name} is missing; load a checkpoint with compiled DDFZ codebooks first")
+        raise ValueError(f"{name} is missing; load a checkpoint with compiled ARCQ codebooks first")
     return value.detach().float().flatten().contiguous()
 
 
@@ -32,7 +32,7 @@ def _quantize_weight_reference(
     eps: float,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if weight.dim() != 2:
-        raise ValueError(f"DDFZPackedLinear expects 2D linear weight, got shape={tuple(weight.shape)}")
+        raise ValueError(f"ARCQPackedLinear expects 2D linear weight, got shape={tuple(weight.shape)}")
     out_features, in_features = weight.shape
     if in_features % group_size != 0:
         raise ValueError(
@@ -53,10 +53,10 @@ def _quantize_weight_reference(
     return codes.reshape(out_features, in_features).to(torch.int64), center, scale, code_sum
 
 
-class DDFZPackedLinear(nn.Module):
-    """Inference-only packed DDFZ linear layer.
+class ARCQPackedLinear(nn.Module):
+    """Inference-only packed ARCQ linear layer.
 
-    This module replaces QuantLinearPCDDFZ after training. It stores weight
+    This module replaces QuantLinearPCARCQ after training. It stores weight
     low-bit indices plus per-group metadata and never keeps the full floating
     weight matrix as a parameter.
     """
@@ -71,11 +71,11 @@ class DDFZPackedLinear(nn.Module):
         self.runtime_code_format = runtime_code_format
         linear = getattr(source, "linear", None)
         if linear is None or not hasattr(linear, "weight"):
-            raise TypeError("DDFZPackedLinear source must expose source.linear.weight")
+            raise TypeError("ARCQPackedLinear source must expose source.linear.weight")
         act_quant = getattr(source, "act_quant", None)
         weight_quant = getattr(source, "weight_quant", None)
         if act_quant is None or weight_quant is None:
-            raise TypeError("DDFZPackedLinear source must expose act_quant and weight_quant")
+            raise TypeError("ARCQPackedLinear source must expose act_quant and weight_quant")
 
         self.in_features = int(linear.weight.shape[1])
         self.out_features = int(linear.weight.shape[0])
@@ -182,7 +182,7 @@ class DDFZPackedLinear(nn.Module):
                 self.bits,
                 self.group_size,
             )
-            y2 = ddfz_linear_forward_u8(
+            y2 = arcq_linear_forward_u8(
                 x_codes,
                 x_center,
                 x_scale,
@@ -203,7 +203,7 @@ class DDFZPackedLinear(nn.Module):
                 self.bits,
                 self.group_size,
             )
-            y2 = ddfz_linear_forward(
+            y2 = arcq_linear_forward(
                 packed_x,
                 x_center,
                 x_scale,

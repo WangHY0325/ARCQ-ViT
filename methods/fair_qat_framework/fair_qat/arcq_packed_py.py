@@ -1,5 +1,5 @@
 """
-Pure Python (NumPy/PyTorch) bit packing for DDFZ codes.
+Pure Python (NumPy/PyTorch) bit packing for ARCQ codes.
 Replaces the CUDA extension to avoid architecture mismatch issues.
 """
 import torch

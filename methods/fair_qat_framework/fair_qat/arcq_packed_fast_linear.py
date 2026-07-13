@@ -1,5 +1,5 @@
 """
-DDFZ Packed Linear with Python-based weight unpack + standard matmul.
+ARCQ Packed Linear with Python-based weight unpack + standard matmul.
 Replaces the slow CUDA fused kernel with a simpler approach.
 """
 import torch
@@ -7,12 +7,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 
-from fair_qat.ddfz_infer_cuda import unpack_codes
-from fair_qat.ddfz_packed_linear import DDFZPackedLinear, _require_vector
+from fair_qat.arcq_infer_cuda import unpack_codes
+from fair_qat.arcq_packed_linear import ARCQPackedLinear, _require_vector
 
 
-class DDFZPackedLinearFast(DDFZPackedLinear):
-    """Same storage as DDFZPackedLinear, but forward uses standard matmul.
+class ARCQPackedLinearFast(ARCQPackedLinear):
+    """Same storage as ARCQPackedLinear, but forward uses standard matmul.
     
     Replaces the slow CUDA fused kernel with:
     1. Unpack weight codes → fp16 weight (GPU)
@@ -28,7 +28,7 @@ class DDFZPackedLinearFast(DDFZPackedLinear):
         x_fp32 = x.reshape(-1, self.in_features).to(device=device, dtype=torch.float32)
         
         # Unpack weights: packed codes → fp16 weight matrix
-        w_fp16 = _unpack_ddfz_weight(
+        w_fp16 = _unpack_arcq_weight(
             self.packed_weight_codes,
             self.weight_codebook,
             self.weight_center,
@@ -45,7 +45,7 @@ class DDFZPackedLinearFast(DDFZPackedLinear):
         return y.reshape(*original_shape[:-1], self.out_features)
 
 
-def _unpack_ddfz_weight(
+def _unpack_arcq_weight(
     packed_codes: torch.Tensor,       # uint8 [out_f, packed_cols]
     codebook: torch.Tensor,            # fp32 [levels]
     center: torch.Tensor,              # fp32 [out_f, groups]

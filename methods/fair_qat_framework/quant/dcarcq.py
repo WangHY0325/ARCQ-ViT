@@ -1,9 +1,9 @@
 """
-DC-DDFZ Quantizer for ViT — v2 (vectorized, shared codebook).
+DC-ARCQ Quantizer for ViT — v2 (vectorized, shared codebook).
 
 Theory:
 - Each group has its own center p and RMS scale s.
-- All groups in a tensor/layer share ONE DDFZ codebook derived from the
+- All groups in a tensor/layer share ONE ARCQ codebook derived from the
   global residual distribution (sampled for speed).
 - Encoding: vectorized bucketize on all groups at once.
 - No per-group Python loop.
@@ -103,13 +103,13 @@ def _compute_tail_k(x: torch.Tensor, tau: float) -> float:
 
 
 # ============================================================================
-#  DDFZ Quantizer — v2 (vectorized, shared codebook)
+#  ARCQ Quantizer — v2 (vectorized, shared codebook)
 # ============================================================================
 
-class DDFZQuantizer(nn.Module):
+class ARCQQuantizer(nn.Module):
     """Distribution-Driven Free-trainable Zero-point Quantizer.
 
-    Applies group-wise DDFZ quantization to the last dimension.
+    Applies group-wise ARCQ quantization to the last dimension.
 
     V2 design:
       - Per-group center/scale (p, s).
@@ -150,7 +150,7 @@ class DDFZQuantizer(nn.Module):
 
     @torch.no_grad()
     def _build_codebook_from_flat(self, t_flat: torch.Tensor) -> torch.Tensor:
-        """Build a DDFZ codebook from the full sampled residual distribution.
+        """Build a ARCQ codebook from the full sampled residual distribution.
 
         Args:
             t_flat: 1D tensor of normalized residuals (sampled from all groups).
@@ -371,8 +371,8 @@ class DDFZQuantizer(nn.Module):
 #  Specialized subclasses
 # ============================================================================
 
-class DDFZWeightQuantizer(DDFZQuantizer):
-    """Weight DDFZ quantizer — codebook frozen after first forward."""
+class ARCQWeightQuantizer(ARCQQuantizer):
+    """Weight ARCQ quantizer — codebook frozen after first forward."""
 
     def __init__(self, bits: int = 4, group_size: int = 64,
                  stats_sample_groups: int = 4096, **kwargs):
@@ -385,8 +385,8 @@ class DDFZWeightQuantizer(DDFZQuantizer):
         )
 
 
-class DDFZActQuantizer(DDFZQuantizer):
-    """Activation DDFZ quantizer — codebook rebuilt each forward."""
+class ARCQActQuantizer(ARCQQuantizer):
+    """Activation ARCQ quantizer — codebook rebuilt each forward."""
 
     def __init__(self, bits: int = 4, group_size: int = 64,
                  stats_sample_groups: int = 4096, **kwargs):
@@ -400,14 +400,14 @@ class DDFZActQuantizer(DDFZQuantizer):
 
 
 # ============================================================================
-#  PC-DDFZ Quantizer — Phase-Compiled codebook
+#  PC-ARCQ Quantizer — Phase-Compiled codebook
 # ============================================================================
 
-class DDFZPCQuantizer(DDFZQuantizer):
+class ARCQPCQuantizer(ARCQQuantizer):
     """
-    Phase-Compiled DDFZ for ViT.
+    Phase-Compiled ARCQ for ViT.
 
-    Same quantization formula as DDFZQuantizer:
+    Same quantization formula as ARCQQuantizer:
         x -> group mean p
         r = x - p
         s = RMS(r)
@@ -457,7 +457,7 @@ class DDFZPCQuantizer(DDFZQuantizer):
             isinstance(compile_steps, str)
             and compile_steps.strip().lower() == "auto"
         ):
-            env_steps = os.environ.get("DDFZ_PC_COMPILE_STEPS", "").strip()
+            env_steps = os.environ.get("ARCQ_PC_COMPILE_STEPS", "").strip()
             if env_steps:
                 return {
                     int(x.strip())
@@ -499,7 +499,7 @@ class DDFZPCQuantizer(DDFZQuantizer):
 
         if self._pc_step % max(1, self.pc_log_every) == 0 or self._pc_compile_count <= 3:
             print(
-                f"[VIT_PCDDFZ_COMPILE] bits={self.bits} "
+                f"[VIT_PCARCQ_COMPILE] bits={self.bits} "
                 f"step={self._pc_step} count={self._pc_compile_count} "
                 f"groups={total_groups} stat_groups={t_sampled.shape[0]} "
                 f"policy={self.last_stats.get('n_neg', 'na')}/{self.last_stats.get('n_pos', 'na')} "
@@ -578,8 +578,8 @@ class DDFZPCQuantizer(DDFZQuantizer):
         return y
 
 
-class DDFZPCWeightQuantizer(DDFZPCQuantizer):
-    """Weight PC-DDFZ quantizer — codebook frozen after first build."""
+class ARCQPCWeightQuantizer(ARCQPCQuantizer):
+    """Weight PC-ARCQ quantizer — codebook frozen after first build."""
 
     def __init__(
         self,
@@ -600,8 +600,8 @@ class DDFZPCWeightQuantizer(DDFZPCQuantizer):
         )
 
 
-class DDFZPCActQuantizer(DDFZPCQuantizer):
-    """Activation PC-DDFZ quantizer — codebook rebuilt at compile steps."""
+class ARCQPCActQuantizer(ARCQPCQuantizer):
+    """Activation PC-ARCQ quantizer — codebook rebuilt at compile steps."""
 
     def __init__(
         self,

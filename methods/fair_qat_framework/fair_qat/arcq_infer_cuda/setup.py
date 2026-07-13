@@ -8,15 +8,15 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
 setup(
-    name="ddfz_infer_cuda_ext",
+    name="arcq_infer_cuda_ext",
     ext_modules=[
         CUDAExtension(
-            name="ddfz_infer_cuda_ext",
+            name="arcq_infer_cuda_ext",
             sources=[
-                "ddfz_infer_bind.cpp",
-                "ddfz_pack_kernel.cu",
-                "ddfz_activation_kernel.cu",
-                "ddfz_linear_kernel.cu",
+                "arcq_infer_bind.cpp",
+                "arcq_pack_kernel.cu",
+                "arcq_activation_kernel.cu",
+                "arcq_linear_kernel.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],

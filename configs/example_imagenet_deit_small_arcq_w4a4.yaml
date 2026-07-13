@@ -5,7 +5,7 @@ model_name: deit_small_patch16_224
 num_classes: 1000
 image_size: 224
 normalization: imagenet
-method: pcddfz_nodc
+method: pcarcq_nodc
 w_bits: 4
 a_bits: 4
 head_quant: w8a8
@@ -27,13 +27,13 @@ ddp_find_unused_parameters: true
 ddp_broadcast_buffers: true
 ddp_init_sync: true
 seed: 42
-output_dir: ./runs/imagenet_qat_ddfz/deit_small/ddfz_w4a4
+output_dir: ./runs/imagenet_qat_arcq/deit_small/arcq_w4a4
 distillation: true
 kd_type: logit_soft
 distill_alpha: 0.5
 distill_tau: 2.0
 teacher: ./pretrained/deit/deit_small_patch16_224.pth
 teacher_checkpoint: ./pretrained/deit/deit_small_patch16_224.pth
-ddfz_zero_anchor: true
+arcq_zero_anchor: true
 pc_compile_updates_per_epoch: 4
 save_checkpoints: true

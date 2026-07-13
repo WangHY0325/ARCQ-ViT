@@ -4,7 +4,7 @@ Fair QAT quantization backends.
 Three backends exposing the same interface, differing only in quantizer algorithm:
   - QViTBackend  (third_party/qvit)
   - LSQBackend   (quant.lsq)
-  - DDFZBackend  (quant.dcddfz)
+  - ARCQBackend  (quant.dcarcq)
 
 Interface per backend:
   make_conv2d(in_ch, out_ch, k, s, p, bias, w_bits, a_bits) -> nn.Module
@@ -171,7 +171,7 @@ class DiagonalDCConditioner(nn.Module):
       Conv2d: x_c*d_c, W_c/d_c
 
     Keeps FP computation approximately equivalent before quantization,
-    while making activation/weight residual distributions easier for DDFZ.
+    while making activation/weight residual distributions easier for ARCQ.
     """
 
     def __init__(
@@ -221,7 +221,7 @@ class DiagonalDCConditioner(nn.Module):
 
         if self.step <= 3 or self.step % 500 == 0:
             print(
-                f"[VIT_DDFZ_DC] linear step={self.step} "
+                f"[VIT_ARCQ_DC] linear step={self.step} "
                 f"d_min={float(self.d.min()):.4f} d_max={float(self.d.max()):.4f} "
                 f"d_mean={float(self.d.mean()):.4f}"
             )
@@ -252,7 +252,7 @@ class DiagonalDCConditioner(nn.Module):
 
         if self.step <= 3 or self.step % 500 == 0:
             print(
-                f"[VIT_DDFZ_DC] conv step={self.step} "
+                f"[VIT_ARCQ_DC] conv step={self.step} "
                 f"d_min={float(self.d.min()):.4f} d_max={float(self.d.max()):.4f} "
                 f"d_mean={float(self.d.mean()):.4f}"
             )
@@ -276,10 +276,10 @@ class DiagonalDCConditioner(nn.Module):
 
 
 # ======================================================================
-#  PC-DDFZ Linear wrapper
+#  PC-ARCQ Linear wrapper
 # ======================================================================
 
-class QuantLinearPCDDFZ(nn.Module):
+class QuantLinearPCARCQ(nn.Module):
     def __init__(
         self,
         in_f,
@@ -292,17 +292,17 @@ class QuantLinearPCDDFZ(nn.Module):
         compile_steps="auto",
     ):
         super().__init__()
-        from quant.dcddfz import DDFZPCActQuantizer, DDFZPCWeightQuantizer
+        from quant.dcarcq import ARCQPCActQuantizer, ARCQPCWeightQuantizer
         self.linear = nn.Linear(in_f, out_f, bias=bias)
         self.use_dc = bool(use_dc)
         self.dc = DiagonalDCConditioner(in_f) if self.use_dc else None
 
-        self.act_quant = DDFZPCActQuantizer(
+        self.act_quant = ARCQPCActQuantizer(
             bits=a_bits,
             group_size=group_size,
             compile_steps=compile_steps,
         )
-        self.weight_quant = DDFZPCWeightQuantizer(
+        self.weight_quant = ARCQPCWeightQuantizer(
             bits=w_bits,
             group_size=group_size,
             compile_steps=compile_steps,
@@ -323,10 +323,10 @@ class QuantLinearPCDDFZ(nn.Module):
 
 
 # ======================================================================
-#  PC-DDFZ Conv2d wrapper
+#  PC-ARCQ Conv2d wrapper
 # ======================================================================
 
-class QuantConv2dPCDDFZ(nn.Module):
+class QuantConv2dPCARCQ(nn.Module):
     def __init__(
         self,
         in_ch,
@@ -342,18 +342,18 @@ class QuantConv2dPCDDFZ(nn.Module):
         compile_steps="auto",
     ):
         super().__init__()
-        from quant.dcddfz import DDFZPCActQuantizer, DDFZPCWeightQuantizer
+        from quant.dcarcq import ARCQPCActQuantizer, ARCQPCWeightQuantizer
         self.conv = nn.Conv2d(in_ch, out_ch, k, stride=s, padding=p, bias=bias)
         self.use_dc = bool(use_dc)
         self.dc = DiagonalDCConditioner(in_ch) if self.use_dc else None
 
         act_gs = min(group_size, in_ch) if in_ch > 0 else group_size
-        self.act_quant = DDFZPCActQuantizer(
+        self.act_quant = ARCQPCActQuantizer(
             bits=a_bits,
             group_size=act_gs,
             compile_steps=compile_steps,
         )
-        self.weight_quant = DDFZPCWeightQuantizer(
+        self.weight_quant = ARCQPCWeightQuantizer(
             bits=w_bits,
             group_size=group_size,
             compile_steps=compile_steps,
@@ -368,7 +368,7 @@ class QuantConv2dPCDDFZ(nn.Module):
             x = self.dc.conv_x(x)
             w = self.dc.conv_w(w)
 
-        # DDFZ activation groups channels, so use NHWC
+        # ARCQ activation groups channels, so use NHWC
         x_nhwc = x.permute(0, 2, 3, 1).contiguous()
         x_q = self.act_quant(x_nhwc)
         x_q = x_q.permute(0, 3, 1, 2).contiguous()
@@ -385,15 +385,15 @@ class QuantConv2dPCDDFZ(nn.Module):
 
 
 # ======================================================================
-#  PC-DDFZ NoDC Backend
+#  PC-ARCQ NoDC Backend
 # ======================================================================
 
-class PCDDFZNoDCBackend:
-    name = "pcddfz_nodc"
+class PCARCQNoDCBackend:
+    name = "pcarcq_nodc"
 
     @staticmethod
     def make_conv2d(in_ch, out_ch, k, s, p, bias, w_bits, a_bits):
-        return QuantConv2dPCDDFZ(
+        return QuantConv2dPCARCQ(
             in_ch, out_ch, k, s, p, bias,
             w_bits=w_bits, a_bits=a_bits,
             use_dc=False,
@@ -401,7 +401,7 @@ class PCDDFZNoDCBackend:
 
     @staticmethod
     def make_linear(in_f, out_f, bias, w_bits, a_bits):
-        return QuantLinearPCDDFZ(
+        return QuantLinearPCARCQ(
             in_f, out_f, bias,
             w_bits=w_bits, a_bits=a_bits,
             use_dc=False,
@@ -409,8 +409,8 @@ class PCDDFZNoDCBackend:
 
     @staticmethod
     def make_act(a_bits, shape_hint=None):
-        from quant.dcddfz import DDFZPCActQuantizer
-        return DDFZPCActQuantizer(
+        from quant.dcarcq import ARCQPCActQuantizer
+        return ARCQPCActQuantizer(
             bits=a_bits,
             group_size=64,
             compile_steps="auto",
@@ -422,15 +422,15 @@ class PCDDFZNoDCBackend:
 
 
 # ======================================================================
-#  PC-DDFZ DC Backend
+#  PC-ARCQ DC Backend
 # ======================================================================
 
-class PCDDFZDCBackend:
-    name = "pcddfz_dc"
+class PCARCQDCBackend:
+    name = "pcarcq_dc"
 
     @staticmethod
     def make_conv2d(in_ch, out_ch, k, s, p, bias, w_bits, a_bits):
-        return QuantConv2dPCDDFZ(
+        return QuantConv2dPCARCQ(
             in_ch, out_ch, k, s, p, bias,
             w_bits=w_bits, a_bits=a_bits,
             use_dc=True,
@@ -438,7 +438,7 @@ class PCDDFZDCBackend:
 
     @staticmethod
     def make_linear(in_f, out_f, bias, w_bits, a_bits):
-        return QuantLinearPCDDFZ(
+        return QuantLinearPCARCQ(
             in_f, out_f, bias,
             w_bits=w_bits, a_bits=a_bits,
             use_dc=True,
@@ -446,8 +446,8 @@ class PCDDFZDCBackend:
 
     @staticmethod
     def make_act(a_bits, shape_hint=None):
-        from quant.dcddfz import DDFZPCActQuantizer
-        return DDFZPCActQuantizer(
+        from quant.dcarcq import ARCQPCActQuantizer
+        return ARCQPCActQuantizer(
             bits=a_bits,
             group_size=64,
             compile_steps="auto",
@@ -457,18 +457,18 @@ class PCDDFZDCBackend:
     def make_head(in_f, out_f, bias):
         return QuantLinearLSQ(in_f, out_f, bias, w_bits=8, a_bits=8)
 
-class QuantConv2dDDFZ(nn.Module):
+class QuantConv2dARCQ(nn.Module):
     def __init__(self, in_ch, out_ch, k, s, p, bias, w_bits, a_bits, group_size=64):
         super().__init__()
-        from quant.dcddfz import DDFZActQuantizer, DDFZWeightQuantizer
+        from quant.dcarcq import ARCQActQuantizer, ARCQWeightQuantizer
         self.conv = nn.Conv2d(in_ch, out_ch, k, stride=s, padding=p, bias=bias)
         # Activation: group along channel dim (NHWC), so group_size capped by in_ch
         act_gs = min(group_size, in_ch) if in_ch > 0 else group_size
-        self.act_quant = DDFZActQuantizer(bits=a_bits, group_size=act_gs)
-        self.weight_quant = DDFZWeightQuantizer(bits=w_bits, group_size=group_size)
+        self.act_quant = ARCQActQuantizer(bits=a_bits, group_size=act_gs)
+        self.weight_quant = ARCQWeightQuantizer(bits=w_bits, group_size=group_size)
 
     def forward(self, x):
-        # DDFZ groups along last dim → permute to NHWC for channel grouping
+        # ARCQ groups along last dim → permute to NHWC for channel grouping
         x_nhwc = x.permute(0, 2, 3, 1).contiguous()  # (B, H, W, C)
         x_q = self.act_quant(x_nhwc)
         x_q = x_q.permute(0, 3, 1, 2).contiguous()     # back to NCHW
@@ -482,13 +482,13 @@ class QuantConv2dDDFZ(nn.Module):
                         self.conv.dilation, self.conv.groups)
 
 
-class QuantLinearDDFZ(nn.Module):
+class QuantLinearARCQ(nn.Module):
     def __init__(self, in_f, out_f, bias, w_bits, a_bits, group_size=64):
         super().__init__()
-        from quant.dcddfz import DDFZActQuantizer, DDFZWeightQuantizer
+        from quant.dcarcq import ARCQActQuantizer, ARCQWeightQuantizer
         self.linear = nn.Linear(in_f, out_f, bias=bias)
-        self.act_quant = DDFZActQuantizer(bits=a_bits, group_size=group_size)
-        self.weight_quant = DDFZWeightQuantizer(bits=w_bits, group_size=group_size)
+        self.act_quant = ARCQActQuantizer(bits=a_bits, group_size=group_size)
+        self.weight_quant = ARCQWeightQuantizer(bits=w_bits, group_size=group_size)
 
     def forward(self, x):
         x_q = self.act_quant(x)
@@ -496,21 +496,21 @@ class QuantLinearDDFZ(nn.Module):
         return F.linear(x_q, w_q, self.linear.bias)
 
 
-class DDFZBackend:
-    name = "dcddfz"
+class ARCQBackend:
+    name = "dcarcq"
 
     @staticmethod
     def make_conv2d(in_ch, out_ch, k, s, p, bias, w_bits, a_bits):
-        return QuantConv2dDDFZ(in_ch, out_ch, k, s, p, bias, w_bits, a_bits)
+        return QuantConv2dARCQ(in_ch, out_ch, k, s, p, bias, w_bits, a_bits)
 
     @staticmethod
     def make_linear(in_f, out_f, bias, w_bits, a_bits):
-        return QuantLinearDDFZ(in_f, out_f, bias, w_bits, a_bits)
+        return QuantLinearARCQ(in_f, out_f, bias, w_bits, a_bits)
 
     @staticmethod
     def make_act(a_bits, shape_hint=None):
-        from quant.dcddfz import DDFZActQuantizer
-        return DDFZActQuantizer(bits=a_bits, group_size=64)
+        from quant.dcarcq import ARCQActQuantizer
+        return ARCQActQuantizer(bits=a_bits, group_size=64)
 
     @staticmethod
     def make_head(in_f, out_f, bias):
@@ -672,9 +672,9 @@ class AOQBackend:
 
 BACKENDS = {
     "fp32": FP32Backend,
-    "dcddfz": DDFZBackend,
-    "pcddfz_nodc": PCDDFZNoDCBackend,
-    "pcddfz_dc": PCDDFZDCBackend,
+    "dcarcq": ARCQBackend,
+    "pcarcq_nodc": PCARCQNoDCBackend,
+    "pcarcq_dc": PCARCQDCBackend,
 }
 
 

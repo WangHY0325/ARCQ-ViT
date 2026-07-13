@@ -1,5 +1,5 @@
 """
-DDFZ Packed Linear with on-the-fly weight unpack + standard cuBLAS matmul.
+ARCQ Packed Linear with on-the-fly weight unpack + standard cuBLAS matmul.
 
 Stores ONLY packed codes + metadata (~16 MB for DeiT-Small W4A4).
 Forward: vectorized GPU unpack weight to fp16 → F.linear (cuBLAS).
@@ -90,8 +90,8 @@ def _dequant_activation_torch(
     return x_hat_g.reshape(rows, cols)
 
 
-class DDFZPackedLinearOnTheFly(nn.Module):
-    """Inference-only packed DDFZ linear. Unpacks weight on the fly.
+class ARCQPackedLinearOnTheFly(nn.Module):
+    """Inference-only packed ARCQ linear. Unpacks weight on the fly.
 
     Stores: packed_weight_codes (int4) + center/scale/codebook + bias.
     No weight_dequant buffer → ~16 MB GPU memory for DeiT-Small W4A4.
@@ -139,13 +139,13 @@ class DDFZPackedLinearOnTheFly(nn.Module):
         x2 = x.reshape(-1, self.in_features).to(dtype=torch.float16).contiguous()
 
         # Dequantize activation: Triton fused (fp16 in → fp16 out, zero intermediates)
-        from fair_qat.ddfz_packed_triton import dequant_activation_triton
+        from fair_qat.arcq_packed_triton import dequant_activation_triton
         x_hat = dequant_activation_triton(
             x2, self.activation_thresholds, self.activation_codebook, self.group_size, out=x2
         )
 
         # Unpack weight: Triton fused
-        from fair_qat.ddfz_packed_triton import unpack_weight_triton
+        from fair_qat.arcq_packed_triton import unpack_weight_triton
         shared_buf = getattr(self, '_weight_buffer', None)
         w_fp16 = unpack_weight_triton(
             self.packed_weight_codes, self.weight_codebook,

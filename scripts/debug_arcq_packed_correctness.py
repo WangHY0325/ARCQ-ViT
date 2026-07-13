@@ -21,14 +21,14 @@ if str(FAIR_ROOT) not in sys.path:
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from benchmark_ddfz_packed_inference import (  # noqa: E402
-    build_ddfz_model,
+from benchmark_arcq_packed_inference import (  # noqa: E402
+    build_arcq_model,
     default_paths,
     synchronize,
 )
-from fair_qat.ddfz_packed_convert import convert_ddfz_linear_to_packed, count_packed_linear  # noqa: E402
-from fair_qat.ddfz_packed_linear import DDFZPackedLinear  # noqa: E402
-from fair_qat.quant_backends import QuantConv2dPCDDFZ, QuantLinearPCDDFZ, QuantLinearLSQ  # noqa: E402
+from fair_qat.arcq_packed_convert import convert_arcq_linear_to_packed, count_packed_linear  # noqa: E402
+from fair_qat.arcq_packed_linear import ARCQPackedLinear  # noqa: E402
+from fair_qat.quant_backends import QuantConv2dPCARCQ, QuantLinearPCARCQ, QuantLinearLSQ  # noqa: E402
 
 
 def parse_args():
@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--runtime-code-format", choices=["packed", "u8"], default="packed")
-    parser.add_argument("--out-dir", default=str(ROOT / "figures" / "ddfz_packed_debug"))
+    parser.add_argument("--out-dir", default=str(ROOT / "figures" / "arcq_packed_debug"))
     return parser.parse_args()
 
 
@@ -59,7 +59,7 @@ def write_csv(path: Path, rows, fields=None):
         writer.writerows(rows)
 
 
-def freeze_ddfz_compile(model: nn.Module):
+def freeze_arcq_compile(model: nn.Module):
     ready = 0
     missing = 0
     for module in model.modules():
@@ -87,7 +87,7 @@ def is_transformer_block_name(name: str) -> bool:
 
 
 def should_hook(name: str, module: nn.Module) -> bool:
-    if isinstance(module, (QuantConv2dPCDDFZ, QuantLinearPCDDFZ, DDFZPackedLinear, QuantLinearLSQ)):
+    if isinstance(module, (QuantConv2dPCARCQ, QuantLinearPCARCQ, ARCQPackedLinear, QuantLinearLSQ)):
         return True
     if is_transformer_block_name(name):
         return True
@@ -129,7 +129,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
-        raise RuntimeError("DDFZ packed correctness debug must run on a Slurm GPU node")
+        raise RuntimeError("ARCQ packed correctness debug must run on a Slurm GPU node")
     torch.manual_seed(20260630)
     if hasattr(torch, "set_float32_matmul_precision"):
         torch.set_float32_matmul_precision("highest")
@@ -140,18 +140,18 @@ def main():
     config_path = Path(args.config) if args.config else default_config
     checkpoint_path = Path(args.checkpoint) if args.checkpoint else default_checkpoint
 
-    print(f"[BUILD] pseudo DDFZ model={args.model} bits={args.bits}", flush=True)
-    pseudo_model, pseudo_info = build_ddfz_model(config_path, checkpoint_path, device)
-    pseudo_ready, pseudo_missing = freeze_ddfz_compile(pseudo_model)
+    print(f"[BUILD] pseudo ARCQ model={args.model} bits={args.bits}", flush=True)
+    pseudo_model, pseudo_info = build_arcq_model(config_path, checkpoint_path, device)
+    pseudo_ready, pseudo_missing = freeze_arcq_compile(pseudo_model)
 
-    print(f"[BUILD] packed DDFZ format={args.runtime_code_format}", flush=True)
-    packed_source, packed_info = build_ddfz_model(config_path, checkpoint_path, device)
-    source_ready, source_missing = freeze_ddfz_compile(packed_source)
-    packed_model = convert_ddfz_linear_to_packed(
+    print(f"[BUILD] packed ARCQ format={args.runtime_code_format}", flush=True)
+    packed_source, packed_info = build_arcq_model(config_path, checkpoint_path, device)
+    source_ready, source_missing = freeze_arcq_compile(packed_source)
+    packed_model = convert_arcq_linear_to_packed(
         packed_source,
         runtime_code_format=args.runtime_code_format,
     ).eval()
-    packed_ready, packed_missing = freeze_ddfz_compile(packed_model)
+    packed_ready, packed_missing = freeze_arcq_compile(packed_model)
     packed_count = count_packed_linear(packed_model)
     print(
         "[READY] "

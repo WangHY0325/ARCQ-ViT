@@ -58,7 +58,7 @@ def should_save_checkpoint(method: str, config: dict) -> bool:
     if "save_checkpoints" in config:
         return bool(config["save_checkpoints"])
     method_lower = str(method).lower()
-    return "ddfz" in method_lower
+    return "arcq" in method_lower
 
 
 def ddp_barrier(distributed: bool, local_rank: int):
@@ -77,7 +77,7 @@ def ddp_sum(values, device, distributed: bool):
     return tensor.cpu().tolist()
 
 
-def configure_pcddfz_schedule(config, steps_per_epoch: int, rank: int):
+def configure_pcarcq_schedule(config, steps_per_epoch: int, rank: int):
     epochs = int(config.get("epochs", 200))
     explicit_steps = config.get("pc_compile_steps", None)
     updates_per_epoch = config.get("pc_compile_updates_per_epoch", None)
@@ -121,14 +121,14 @@ def configure_pcddfz_schedule(config, steps_per_epoch: int, rank: int):
 
     if 0 not in steps:
         steps.insert(0, 0)
-    os.environ["DDFZ_PC_COMPILE_STEPS"] = ",".join(str(s) for s in steps)
+    os.environ["ARCQ_PC_COMPILE_STEPS"] = ",".join(str(s) for s in steps)
 
     if is_main_process(rank):
         print(
-            "[PCDDFZ_SCHEDULE] "
+            "[PCARCQ_SCHEDULE] "
             f"steps_per_epoch={steps_per_epoch} "
             f"{schedule_desc} "
-            f"compile_steps={os.environ['DDFZ_PC_COMPILE_STEPS']}"
+            f"compile_steps={os.environ['ARCQ_PC_COMPILE_STEPS']}"
         )
     return steps
 
@@ -607,7 +607,7 @@ def main():
             flush=True,
         )
 
-    configure_pcddfz_schedule(config, len(train_loader), rank)
+    configure_pcarcq_schedule(config, len(train_loader), rank)
 
     model = build_timm_quant_model(config, backend).to(device)
 

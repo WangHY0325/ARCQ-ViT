@@ -19,7 +19,7 @@ __device__ __forceinline__ int get_packed_code_u8(
     return static_cast<int>(value & ((1u << bits) - 1u));
 }
 
-__global__ void ddfz_linear_forward_kernel(
+__global__ void arcq_linear_forward_kernel(
     const unsigned char* __restrict__ packed_x,
     const float* __restrict__ x_center,
     const float* __restrict__ x_scale,
@@ -77,7 +77,7 @@ __global__ void ddfz_linear_forward_kernel(
     y[linear] = static_cast<float>(acc);
 }
 
-__global__ void ddfz_linear_forward_u8_kernel(
+__global__ void arcq_linear_forward_u8_kernel(
     const unsigned char* __restrict__ x_codes,
     const float* __restrict__ x_center,
     const float* __restrict__ x_scale,
@@ -133,7 +133,7 @@ __global__ void ddfz_linear_forward_u8_kernel(
     y[linear] = static_cast<float>(acc);
 }
 
-__global__ void ddfz_linear_forward_u8_warp_kernel(
+__global__ void arcq_linear_forward_u8_warp_kernel(
     const unsigned char* __restrict__ x_codes,
     const float* __restrict__ x_center,
     const float* __restrict__ x_scale,
@@ -203,7 +203,7 @@ __global__ void ddfz_linear_forward_u8_warp_kernel(
 
 }  // namespace
 
-torch::Tensor ddfz_linear_forward_cuda(
+torch::Tensor arcq_linear_forward_cuda(
     torch::Tensor packed_x,
     torch::Tensor x_center,
     torch::Tensor x_scale,
@@ -252,7 +252,7 @@ torch::Tensor ddfz_linear_forward_cuda(
     const int threads = 128;
     const int64_t total = rows * out_features;
     const int blocks = static_cast<int>((total + threads - 1) / threads);
-    ddfz_linear_forward_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+    arcq_linear_forward_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
         packed_x.data_ptr<unsigned char>(),
         x_center_c.data_ptr<float>(),
         x_scale_c.data_ptr<float>(),
@@ -277,7 +277,7 @@ torch::Tensor ddfz_linear_forward_cuda(
     return y;
 }
 
-torch::Tensor ddfz_linear_forward_u8_cuda(
+torch::Tensor arcq_linear_forward_u8_cuda(
     torch::Tensor x_codes,
     torch::Tensor x_center,
     torch::Tensor x_scale,
@@ -329,7 +329,7 @@ torch::Tensor ddfz_linear_forward_u8_cuda(
     const int warps_per_block = threads / 32;
     const int64_t total = rows * out_features;
     const int blocks = static_cast<int>((total + warps_per_block - 1) / warps_per_block);
-    ddfz_linear_forward_u8_warp_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+    arcq_linear_forward_u8_warp_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
         x_codes_c.data_ptr<unsigned char>(),
         x_center_c.data_ptr<float>(),
         x_scale_c.data_ptr<float>(),

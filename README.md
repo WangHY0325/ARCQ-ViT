@@ -1,15 +1,15 @@
-# DDFZ-ViT
+# ARCQ-ViT
 
-Official implementation of **DDFZ: Dynamic Residual-Space Codebooks for Low-Bit Vision Transformers**.
+Official implementation of **ARCQ: Adaptive Residual Codebook Quantization for Vision Transformers**.
 
-DDFZ quantizes normalized group residuals instead of raw tensor values and adapts non-uniform codebooks at scheduled training stages.
+ARCQ quantizes normalized group residuals instead of raw tensor values and adapts non-uniform codebooks at scheduled training stages.
 
 ## Features
 
 - Group-residual quantization for weights and activations.
 - Distribution-fitted non-uniform codebooks.
 - Scheduled phase compilation with cached codebooks and thresholds.
-- Soft-logit knowledge distillation for DDFZ students.
+- Soft-logit knowledge distillation for ARCQ students.
 - Packed On-The-Fly inference with low-bit storage and Triton kernels.
 
 The main experiments use W4A4 and W3A3.
@@ -17,11 +17,11 @@ The main experiments use W4A4 and W3A3.
 ## Structure
 
 ```text
-configs/                                  # DDFZ example configurations
-dcddfz.py                                 # Core DDFZ quantizer
+configs/                                  # ARCQ example configurations
+dcarcq.py                                 # Core ARCQ quantizer
 methods/fair_qat_framework/               # Training and model integration
-methods/fair_qat_framework/quant/         # DDFZ quantization modules
-methods/fair_qat_framework/fair_qat/      # DDFZ backends and inference
+methods/fair_qat_framework/quant/         # ARCQ quantization modules
+methods/fair_qat_framework/fair_qat/      # ARCQ backends and inference
 scripts/                                  # Conversion, benchmarking, launchers
 requirements.txt
 ```
@@ -58,7 +58,7 @@ pretrained/deit/deit_tiny_patch16_224.pth
 Set `data_dir`, `pretrained_checkpoint`, `initial_checkpoint`, `teacher`, and `output_dir` in an example configuration.
 
 ```yaml
-method: pcddfz_nodc
+method: pcarcq_nodc
 w_bits: 4
 a_bits: 4
 group_size: 64
@@ -84,19 +84,19 @@ Run ImageNet with multiple GPUs:
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nnodes=1 --nproc_per_node=4 \
   methods/fair_qat_framework/fair_qat/train_imagenet_qat.py \
-  --config configs/example_imagenet_deit_tiny_ddfz_w4a4.yaml --device cuda:0
+  --config configs/example_imagenet_deit_tiny_arcq_w4a4.yaml --device cuda:0
 ```
 
 ## Packed On-The-Fly Inference
 
 ```bash
-python scripts/convert_ddfz_to_packed.py \
+python scripts/convert_arcq_to_packed.py \
   --model deit_small --bits 4 \
-  --config configs/example_imagenet_deit_small_ddfz_w4a4.yaml \
-  --checkpoint /path/to/ddfz/best.pt \
+  --config configs/example_imagenet_deit_small_arcq_w4a4.yaml \
+  --checkpoint /path/to/arcq/best.pt \
   --output-dir /path/to/packed_output
 
-python scripts/benchmark_ddfz_on_the_fly.py \
+python scripts/benchmark_arcq_on_the_fly.py \
   --model deit_small --bits 4 --batch-sizes 1,64
 ```
 
@@ -104,7 +104,7 @@ The packed representation stores low-bit weight indices, weight codebooks, per-g
 
 ## Reproducibility
 
-- DDFZ students use frozen FP32 teachers and soft-logit distillation.
+- ARCQ students use frozen FP32 teachers and soft-logit distillation.
 - The main reported precisions are W4A4 and W3A3.
 - The main quantized components are Transformer linear layers and their input activations.
 - Patch embedding, classification head, LayerNorm, Softmax, GELU, and residual connections remain floating point unless explicitly changed in a configuration.

@@ -1,5 +1,5 @@
 """
-Triton kernel for DDFZ weight unpack: packed uint8 → fp16 weight.
+Triton kernel for ARCQ weight unpack: packed uint8 → fp16 weight.
 Fused: bit-extract + codebook gather + center/scale + fp16 cast.
 No intermediate int32 codes buffer → ~41 MB instead of ~127 MB peak.
 """
@@ -9,7 +9,7 @@ import torch
 
 
 @triton.jit
-def _unpack_ddfz_weight_row(
+def _unpack_arcq_weight_row(
     packed_ptr,          # uint8 [out_f, packed_cols]
     codebook_ptr,        # fp32 [levels]
     center_ptr,          # fp32 [out_f, groups]
@@ -84,7 +84,7 @@ def unpack_weight_triton(
     group_size: int,
     out: torch.Tensor | None = None,  # optional pre-allocated fp16 buffer
 ) -> torch.Tensor:
-    """Unpack DDFZ packed weight to fp16 using Triton fused kernel.
+    """Unpack ARCQ packed weight to fp16 using Triton fused kernel.
     
     Args:
         out: Optional pre-allocated fp16 buffer [out_f, in_f]. 
@@ -111,7 +111,7 @@ def unpack_weight_triton(
     BLOCK_SIZE = 128
     grid = (out_f,)
 
-    _unpack_ddfz_weight_row[grid](
+    _unpack_arcq_weight_row[grid](
         packed, codebook, center, scale, code_sum, out,
         packed_cols=packed_cols, in_f=in_f, groups=groups,
         group_size=group_size, bits=bits, levels=levels,
@@ -185,7 +185,7 @@ def dequant_activation_triton(
     group_size: int,
     out: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Fused DDFZ activation quantize+dequant using Triton. Zero intermediates."""
+    """Fused ARCQ activation quantize+dequant using Triton. Zero intermediates."""
     rows, cols = x.shape
     groups = cols // group_size
     levels = codebook.numel()

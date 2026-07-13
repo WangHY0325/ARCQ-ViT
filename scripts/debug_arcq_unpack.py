@@ -1,6 +1,6 @@
 """
-Debug: Compare DDFZ internal quantize vs manual unpack.
-Runs DDFZ's own quantizer on the loaded weight and codebook,
+Debug: Compare ARCQ internal quantize vs manual unpack.
+Runs ARCQ's own quantizer on the loaded weight and codebook,
 then compares with the manual center/scale/bucketize approach.
 """
 import os, sys
@@ -12,8 +12,8 @@ _PROJ = os.path.join(BASE, "methods", "fair_qat_framework")
 if _PROJ not in sys.path:
     sys.path.insert(0, _PROJ)
 
-CKPT_W4A4 = f"{BASE}/runs/cifar100_qat/pcddfz_nodc/deit_small/w4a4_w_distill/best.pt"
-CKPT_W3A3 = f"{BASE}/runs/cifar100_qat/pcddfz_nodc/deit_small/w3a3/best.pt"
+CKPT_W4A4 = f"{BASE}/runs/cifar100_qat/pcarcq_nodc/deit_small/w4a4_w_distill/best.pt"
+CKPT_W3A3 = f"{BASE}/runs/cifar100_qat/pcarcq_nodc/deit_small/w3a3/best.pt"
 
 
 def load_state(ckpt_path):
@@ -39,10 +39,10 @@ def main():
     print(f"Weight shape: {tuple(w.shape)}, codebook: {cb.tolist()}")
     print(f"Codebook sorted: {torch.sort(cb).values.tolist()}")
     
-    # Create the actual DDFZ quantizer and load its state
-    from quant.dcddfz import DDFZWeightQuantizer
+    # Create the actual ARCQ quantizer and load its state
+    from quant.dcarcq import ARCQWeightQuantizer
     
-    q = DDFZWeightQuantizer(bits=4, group_size=64, freeze_codebook=True)
+    q = ARCQWeightQuantizer(bits=4, group_size=64, freeze_codebook=True)
     
     # Load the codebook into the quantizer's buffer
     q._pc_cb.copy_(cb)
@@ -52,7 +52,7 @@ def main():
     
     # Run quantizer on the weight
     with torch.no_grad():
-        w_q_ddfz = q(w)
+        w_q_arcq = q(w)
     
     # Now my manual approach
     gs = 64
@@ -64,13 +64,13 @@ def main():
     G = C // gs
     w3 = w2.reshape(rows, G, gs)
     
-    # Match DDFZ exactly: per-row per-group
+    # Match ARCQ exactly: per-row per-group
     center_m = w3.mean(dim=-1, keepdim=True)         # [rows, G, 1]
     residual_m = w3 - center_m
     scale_m = residual_m.square().mean(dim=-1, keepdim=True).sqrt().clamp(min=1e-6)
     t_m = residual_m / scale_m                        # [rows, G, gs]
     
-    # Bucketize with codebook (UNSORTED codebook, matching DDFZ)
+    # Bucketize with codebook (UNSORTED codebook, matching ARCQ)
     cb_sorted = torch.sort(cb).values
     thresholds = (cb_sorted[:-1] + cb_sorted[1:]) / 2.0
     codes_m = torch.bucketize(t_m, thresholds)        # [rows, G, gs]
@@ -88,24 +88,24 @@ def main():
     else:
         w_recon_full = w_recon_m.reshape(out_f, in_f)
     
-    err_vs_ddfz = (w_q_ddfz - w_recon_full).abs().max().item()
+    err_vs_arcq = (w_q_arcq - w_recon_full).abs().max().item()
     err_vs_original = (w - w_recon_full).abs().max().item()
     
-    print(f"\nManual vs DDFZ quantizer max error: {err_vs_ddfz:.6e}")
+    print(f"\nManual vs ARCQ quantizer max error: {err_vs_arcq:.6e}")
     print(f"Manual vs original weight max error:  {err_vs_original:.6e}")
     
-    # Also test: manual with SAME center/scale as DDFZ
-    # The DDFZ quantizer computes center/scale internally during forward
+    # Also test: manual with SAME center/scale as ARCQ
+    # The ARCQ quantizer computes center/scale internally during forward
     # We computed them independently above. They should match.
-    # Let's verify by extracting center/scale from a special DDFZ forward
+    # Let's verify by extracting center/scale from a special ARCQ forward
     
-    print(f"\nDDFZ quantized weight shape: {tuple(w_q_ddfz.shape)}")
+    print(f"\nARCQ quantized weight shape: {tuple(w_q_arcq.shape)}")
     print(f"Manual reconstructed shape:   {tuple(w_recon_full.shape)}")
     
-    if err_vs_ddfz < 1e-5:
-        print("\n✓ Manual unpack matches DDFZ quantizer (using non-PC for test)")
+    if err_vs_arcq < 1e-5:
+        print("\n✓ Manual unpack matches ARCQ quantizer (using non-PC for test)")
     else:
-        print(f"\n✗ MISMATCH: diff = {err_vs_ddfz:.6e}")
+        print(f"\n✗ MISMATCH: diff = {err_vs_arcq:.6e}")
 
 if __name__ == "__main__":
     main()
